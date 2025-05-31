@@ -1,5 +1,9 @@
 name: Build and Release
 
+permissions:
+  contents: write
+  actions: read
+
 on:
   push:
     tags:
@@ -42,6 +46,8 @@ jobs:
     needs: build-windows
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
     
     steps:
     - name: Checkout code
@@ -57,7 +63,7 @@ jobs:
       run: echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
       
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.tag.outputs.tag }}
         name: Release ${{ steps.tag.outputs.tag }}
@@ -82,8 +88,7 @@ jobs:
           ---
           
           Built with Flutter 💙
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
   build-multiplatform:
     if: github.event_name == 'workflow_dispatch'
