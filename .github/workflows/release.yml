@@ -1,0 +1,139 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        cache: true
+        
+    - name: Get dependencies
+      run: flutter pub get
+      
+    - name: Build Windows app
+      run: flutter build windows --release
+      
+    - name: Create zip archive
+      run: |
+        cd build/windows/x64/runner/Release
+        Compress-Archive -Path * -DestinationPath "../../../../../colorful_ball_bounce-windows.zip"
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-release
+        path: colorful_ball_bounce-windows.zip
+
+  release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-release
+        
+    - name: Get tag name
+      id: tag
+      run: echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: Release ${{ steps.tag.outputs.tag }}
+        draft: false
+        prerelease: false
+        files: |
+          colorful_ball_bounce-windows.zip
+        body: |
+          ## 🎉 新版本发布 / New Release
+          
+          ### 下载 / Downloads
+          - **Windows**: colorful_ball_bounce-windows.zip
+          
+          ### 安装说明 / Installation
+          1. 下载对应平台的压缩包
+          2. 解压到任意目录
+          3. 运行 colorful_ball_bounce.exe
+          
+          ### 更新内容 / Changes
+          请查看提交历史获取详细更新内容。
+          
+          ---
+          
+          Built with Flutter 💙
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-multiplatform:
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            build-target: linux
+            artifact-name: linux-release
+            build-command: flutter build linux --release
+            archive-command: tar -czf colorful_ball_bounce-linux.tar.gz -C build/linux/x64/release/bundle .
+            
+          - os: macos-latest
+            build-target: macos
+            artifact-name: macos-release
+            build-command: flutter build macos --release
+            archive-command: |
+              cd build/macos/Build/Products/Release
+              zip -r ../../../../../colorful_ball_bounce-macos.zip colorful_ball_bounce.app
+            
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        cache: true
+        
+    - name: Install Linux dependencies
+      if: matrix.build-target == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+        
+    - name: Get dependencies
+      run: flutter pub get
+      
+    - name: Build app
+      run: ${{ matrix.build-command }}
+      
+    - name: Create archive
+      run: ${{ matrix.archive-command }}
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact-name }}
+        path: colorful_ball_bounce-${{ matrix.build-target }}.*
